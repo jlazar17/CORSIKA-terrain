@@ -273,6 +273,24 @@ The default `_CORSIKA_INSTALL` path in `CMakeLists.txt` points to
 Override with `-DCORSIKA_INSTALL_PREFIX=/other/path` or the environment
 variable `CORSIKA_INSTALL_PREFIX` if needed.
 
+#### Building with FLUKA (recommended on mimo)
+
+FLUKA replaces UrQMD as the low-energy hadronic model and handles a wider
+energy range (no minimum-energy floor).  On mimo, FLUKA is available and
+the CORSIKA build already includes it.  Add `-DWITH_FLUKA=ON` to cmake:
+
+```bash
+cmake .. \
+    -DCMAKE_TOOLCHAIN_FILE=$HOME/corsika/build/conan_toolchain.cmake \
+    -DWITH_FLUKA=ON
+
+make -j1
+```
+
+Without FLUKA, UrQMD is used and `--hadcut` must be kept at or above
+0.3 GeV to avoid UrQMD's minimum-energy crash.  With FLUKA there is no
+such restriction.
+
 ### Other systems
 
 ```bash
@@ -282,6 +300,9 @@ cmake .. \
 
 make -j4
 ```
+
+Add `-DWITH_FLUKA=ON` if FLUKA is available in the CORSIKA build
+(`FLUPRO` and `FLUFOR` environment variables must be set).
 
 ---
 
