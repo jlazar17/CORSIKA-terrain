@@ -6,33 +6,32 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Locate the CORSIKA installation ──────────────────────────────────────────
 #
-# Set the install prefix via the CORSIKA_UPSTREAM_BUILD environment variable
-# (pointing to the cmake build directory, not the install sub-directory) or via
-# the CORSIKA_UPSTREAM_BUILD cmake cache variable.  The project expects the
-# CORSIKA install tree to be at <build_dir>/install.
+# Search order:
+#   1. CORSIKA_INSTALL_PREFIX  – path to the CORSIKA install tree directly
+#                                (e.g. /n/home12/jlazar/.local)
+#   2. CORSIKA_UPSTREAM_BUILD  – path to the cmake build directory; the
+#                                install tree is expected at <build>/install
+#   3. Default: /n/home12/jlazar/.local  (mimo host)
 #
-# Example:
-#   export CORSIKA_UPSTREAM_BUILD=/path/to/corsika_upstream/build
-#   cmake -B build -DCMAKE_BUILD_TYPE=Release ..
-#   cmake --build build
-#   cmake --install build --prefix /opt/terrain_shower
+# Override via environment variable or cmake cache variable of the same name.
 #
-if(DEFINED ENV{CORSIKA_UPSTREAM_BUILD})
-    set(_CORSIKA_BUILD "$ENV{CORSIKA_UPSTREAM_BUILD}")
+if(DEFINED ENV{CORSIKA_INSTALL_PREFIX})
+    set(_CORSIKA_INSTALL "$ENV{CORSIKA_INSTALL_PREFIX}")
+elseif(DEFINED CORSIKA_INSTALL_PREFIX)
+    set(_CORSIKA_INSTALL "${CORSIKA_INSTALL_PREFIX}")
+elseif(DEFINED ENV{CORSIKA_UPSTREAM_BUILD})
+    set(_CORSIKA_INSTALL "$ENV{CORSIKA_UPSTREAM_BUILD}/install")
 elseif(DEFINED CORSIKA_UPSTREAM_BUILD)
-    set(_CORSIKA_BUILD "${CORSIKA_UPSTREAM_BUILD}")
+    set(_CORSIKA_INSTALL "${CORSIKA_UPSTREAM_BUILD}/install")
 else()
-    message(FATAL_ERROR
-        "Set CORSIKA_UPSTREAM_BUILD to the CORSIKA cmake build directory.\n"
-        "  e.g.  export CORSIKA_UPSTREAM_BUILD=/path/to/corsika_upstream/build\n"
-        "  or    cmake -DCORSIKA_UPSTREAM_BUILD=... ..")
+    set(_CORSIKA_INSTALL "/n/home12/jlazar/corsika/build")
 endif()
 
-set(_CORSIKA_INSTALL "${_CORSIKA_BUILD}/install")
 message(STATUS "Using CORSIKA install at: ${_CORSIKA_INSTALL}")
 
 find_package(corsika CONFIG REQUIRED
-    PATHS "${_CORSIKA_INSTALL}/lib/cmake/corsika"
+    PATHS "${_CORSIKA_INSTALL}"
+          "${_CORSIKA_INSTALL}/lib/cmake/corsika"
     NO_DEFAULT_PATH)
 
 # ── Executable ────────────────────────────────────────────────────────────────
