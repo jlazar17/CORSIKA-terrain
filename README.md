@@ -88,7 +88,6 @@ containing ECEF vertex coordinates and triangle faces.
 ```bash
 julia --project=. scripts/create_terrain_geometry.jl LAT LON \
     --group base_triangulation_100000 \
-    --max-angle 0.05 \
     --output terrain.h5
 ```
 
@@ -211,6 +210,49 @@ patch using the closest terrain vertex.
 
 ---
 
+## Building the C++ application
+
+`terrain_shower` requires a CORSIKA 8 build that includes `TriangularMesh`,
+`ObservationMesh`, and PLY mesh loading (the `mesh-bvh-geometry-framework`
+branch or equivalent).
+
+CORSIKA 8 uses [Conan 2](https://conan.io/) to manage its dependencies (CLI11,
+Boost, Arrow, etc.).  The Conan-generated toolchain file must be passed to cmake
+so that these packages are found.
+
+### Harvard FAS RC (mimo)
+
+Load the required compiler and cmake modules, then build:
+
+```bash
+module load gcc/13.2.0-fasrc01 cmake
+
+cd /path/to/CORSIKA_terrain/applications
+mkdir -p build && cd build
+
+cmake .. \
+    -DCMAKE_TOOLCHAIN_FILE=$HOME/corsika/build/conan_toolchain.cmake
+
+make -j1   # use -j1 on login nodes to avoid OOM; submit as a job for faster build
+```
+
+The default `_CORSIKA_INSTALL` path in `CMakeLists.txt` points to
+`/n/home12/jlazar/corsika/build` where `corsikaConfig.cmake` lives.
+Override with `-DCORSIKA_INSTALL_PREFIX=/other/path` or the environment
+variable `CORSIKA_INSTALL_PREFIX` if needed.
+
+### Other systems
+
+```bash
+cmake .. \
+    -DCORSIKA_INSTALL_PREFIX=/path/to/corsika/install \
+    -DCMAKE_TOOLCHAIN_FILE=/path/to/corsika/build/conan_toolchain.cmake
+
+make -j4
+```
+
+---
+
 ## Complete example (copy-paste)
 
 Running these commands in order reproduces the plots for the Jura site:
@@ -253,16 +295,15 @@ The `--group` argument controls the triangulation density.  The number in the
 group name is approximate faces per steradian near the target.  Denser groups
 produce finer meshes but take longer to process and require more memory.
 
-| Group | Total vertices | Typical spacing at target | Useful `--max-angle` |
-|-------|---------------|---------------------------|----------------------|
-| `base_triangulation_1000`   |    3 000 | ~2 km   | 3–5° |
-| `base_triangulation_10000`  |   30 000 | ~700 m  | 0.5–1° |
-| `base_triangulation_100000` |  300 000 | ~55 m   | 0.05–0.1° |
-| `base_triangulation_300000` |  900 000 | ~30 m   | 0.02–0.05° |
+All triangles from the chosen group are retained, producing a closed (watertight)
+spherical mesh suitable for use as a volume in CORSIKA 8.
 
-For the 3-D inner panel at 300 m radius, `base_triangulation_100000` with
-`--max-angle 0.05` gives ~120 vertices in the inner panel (adequate for
-visualisation).
+| Group | Total vertices | Typical spacing at target |
+|-------|---------------|---------------------------|
+| `base_triangulation_1000`   |    3 000 | ~2 km  |
+| `base_triangulation_10000`  |   30 000 | ~700 m |
+| `base_triangulation_100000` |  300 000 | ~55 m  |
+| `base_triangulation_300000` |  900 000 | ~30 m  |
 
 ---
 
@@ -273,5 +314,6 @@ visualisation).
 | `CORSIKA_TERRAIN_TRIANGULATION` | Path to `triangulation.h5` |
 | `CORSIKA_TERRAIN_ELEVATION` | Path to `earth_relief_15s.h5` |
 | `CORSIKA_TERRAIN_DATA` | Fallback directory if the above are unset |
-| `CORSIKA_UPSTREAM_BUILD` | Path to `corsika_upstream` build directory (C++ app only) |
+| `CORSIKA_INSTALL_PREFIX` | Path to CORSIKA install tree (C++ app only; takes precedence) |
+| `CORSIKA_UPSTREAM_BUILD` | Path to CORSIKA cmake build directory; install expected at `<build>/install` (C++ app only) |
 | `CORSIKA_DATA` | CORSIKA data directory (C++ app only) |
