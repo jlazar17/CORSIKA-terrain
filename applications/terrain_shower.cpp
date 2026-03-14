@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
                  "Min. kin. energy of photons/electrons/positrons (GeV)")
       ->default_val(0.01)->check(CLI::Range(1e-6, 1e13))->group("Config");
   app.add_option("--hadcut", "Min. kin. energy of hadrons (GeV)")
-      ->default_val(0.02)->check(CLI::Range(0.02, 1e13))->group("Config");
+      ->default_val(0.3)->check(CLI::Range(0.02, 1e13))->group("Config");
   app.add_option("--mucut", "Min. kin. energy of muons (GeV)")
       ->default_val(0.01)->check(CLI::Range(1e-6, 1e13))->group("Config");
   app.add_option("--taucut", "Min. kin. energy of tau leptons (GeV)")

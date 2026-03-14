@@ -34,9 +34,22 @@ find_package(corsika CONFIG REQUIRED
           "${_CORSIKA_INSTALL}/lib/cmake/corsika"
     NO_DEFAULT_PATH)
 
+# ── FLUKA (optional low-energy hadronic model) ────────────────────────────────
+option(WITH_FLUKA "Use FLUKA for low-energy hadronic interactions (requires FLUKA in CORSIKA build)" OFF)
+
 # ── Executable ────────────────────────────────────────────────────────────────
 add_executable(terrain_shower terrain_shower.cpp)
 target_link_libraries(terrain_shower PRIVATE CORSIKA8::CORSIKA8)
+
+if(WITH_FLUKA)
+    target_compile_definitions(terrain_shower PRIVATE WITH_FLUKA)
+    if(TARGET CORSIKA8::FLUKA)
+        target_link_libraries(terrain_shower PRIVATE CORSIKA8::FLUKA)
+    endif()
+    message(STATUS "Building terrain_shower with FLUKA low-energy hadronic model")
+else()
+    message(STATUS "Building terrain_shower with UrQMD low-energy hadronic model")
+endif()
 
 # macOS: SOPHIA's Fortran routines use large stack frames; increase main-thread
 # stack to 256 MB to avoid stack exhaustion for high-energy primaries.
