@@ -1,7 +1,7 @@
 # CORSIKA Terrain Geometry
 
 Scripts to build a terrain mesh and rectangular detector box for CORSIKA 8
-air-shower simulations, plus visualisation tools to verify the geometry.
+air-shower simulations, plus tools to run showers and visualise the results.
 
 ---
 
@@ -12,9 +12,14 @@ scripts/
   grd_to_h5.jl                – Convert GMT earth_relief GRD → elevation HDF5
   create_terrain_geometry.jl  – HDF5 terrain mesh from a global triangulation
   terrain_h5_to_ply.jl        – Convert terrain HDF5 → CORSIKA-compatible PLY
-  make_box_scene.jl           – Rectangular detector box PLY
-  plot_terrain_box.jl         – 2-D (top-down + cross-section) verification plot
-  plot_terrain_3d.jl          – 3-D mesh visualisation (two-panel)
+  make_box_scene.jl           – Rectangular detector box PLY (altitude via
+                                barycentric interpolation of the terrain mesh)
+  plot_terrain_box.jl         – 2-D (top-down + cross-section) geometry check
+  plot_terrain_3d.jl          – 3-D terrain + box mesh visualisation
+  plot_shower_hits.jl         – 2-D shower hit map (top-down + box zoom)
+  plot_shower_hits_3d.jl      – 3-D shower hits on terrain + box (GLMakie)
+  plot_shower_hits.py         – Python equivalent of plot_shower_hits.jl
+  plot_shower_hits_3d.py      – Python equivalent of plot_shower_hits_3d.jl
 applications/
   terrain_shower.cpp          – CORSIKA 8 C++ application
   CMakeLists.txt
@@ -186,25 +191,26 @@ julia --project=. scripts/make_box_scene.jl \
 | `--length` | Box length along local East axis (m) | required |
 | `--width` | Box width along local North axis (m) | required |
 | `--height` | Box height along local Up axis (m) | required |
-| `--terrain-h5` | Terrain HDF5 file (from Step 1). When given, the box bottom altitude is read from the terrain mesh at the target lat/lon. **Recommended** — avoids having to specify the altitude manually. | `""` |
+| `--terrain-h5` | Terrain HDF5 file (from Step 1). When given, the box bottom altitude is computed by **barycentric interpolation** of the terrain face containing the target lat/lon. **Recommended** — gives the true surface altitude at the detector footprint, not just the nearest vertex. | `""` |
 | `--altitude` | Height of box bottom above Earth surface (m). Ignored when `--terrain-h5` is given. | `0` |
 | `--yaw` | Rotation CCW from East (degrees); 0 = length points East | `0` |
 | `--output` | Output PLY file | `box.ply` |
 
-**Example** (same location, 12.2 × 2.44 × 2.59 m box, yaw 90°):
+**Example** (same location, 2.44 × 12.2 × 2.59 m box, length along East):
 
 ```bash
 julia --project=. scripts/make_box_scene.jl \
     --lat 46.34249442 --lon 5.83882331 \
-    --length 12.2 --width 2.44 --height 2.59 \
-    --terrain-h5 terrain.h5 --yaw 90 \
+    --length 2.44 --width 12.20 --height 2.59 \
+    --terrain-h5 terrain.h5 \
     --output box.ply
 ```
 
 Expected output:
 ```
-Altitude from terrain mesh: 658.5 m  (terrain.h5)
-Centroid altitude:   659.8 m
+  Terrain interpolation: face 54592, centroid dist=29.9 m, altitude=664.44 m
+Altitude from terrain mesh: 664.4 m  (terrain.h5)
+Centroid altitude:   665.7 m
 Wrote 110 vertices, 128 triangles -> 4.5 kB
 ```
 
@@ -239,6 +245,85 @@ julia --project=. scripts/plot_terrain_3d.jl terrain.h5 box.ply \
 
 The box is automatically snapped to the terrain surface at the centre of the
 patch using the closest terrain vertex.
+
+---
+
+## Running a shower simulation
+
+After building `terrain_shower` (see below), run it from the `CORSIKA_terrain`
+directory:
+
+```bash
+applications/build/terrain_shower \
+    --lat 46.34249442 --lon 5.83882331 \
+    --box-ply box.ply \
+    -A 1 -Z 1 \
+    --energy 10000 \
+    --zenith 0 --azimuth 0 \
+    --filename output_vertical \
+    --seed 12345 \
+    -N 5
+```
+
+| Option | Description |
+|--------|-------------|
+| `--lat`, `--lon` | Site geodetic coordinates (degrees) |
+| `--box-ply` | Detector box PLY (from `make_box_scene.jl`) |
+| `--terrain-ply` | Terrain absorber PLY (from `terrain_h5_to_ply.jl`); omit to disable |
+| `-A`, `-Z` | Primary mass number and atomic number (1 1 = proton) |
+| `--energy` | Primary kinetic energy (GeV) |
+| `--zenith`, `--azimuth` | Shower direction in local ENU (deg); azimuth CW from North |
+| `--filename` | Output directory (must not already exist) |
+| `--seed` | RNG seed |
+| `-N` | Number of showers |
+
+Outputs are written to `<filename>/particles/particles.parquet` and
+`<filename>/particles/summary.yaml`.
+
+---
+
+## Visualising shower hits
+
+### 2-D hit map
+
+Two-panel figure: 300 m top-down terrain view and a zoomed box view,
+both coloured by log₁₀(KE / GeV).
+
+```bash
+julia --project=. scripts/plot_shower_hits.jl \
+    terrain.h5 box.ply output_vertical/particles/particles.parquet \
+    --output shower_hits.png
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--radius` | Terrain display radius in left panel (m) | `300` |
+| `--zoom` | Half-width of box zoom panel (m) | `15` |
+| `--dpi` | Resolution | `200` |
+| `--group` | HDF5 group for terrain data | auto-detect |
+
+### 3-D hit plot
+
+Full 3-D scene in local ENU coordinates using GLMakie (OpenGL depth
+buffering — no z-order artefacts).  Shows terrain mesh, box wireframe, and
+particle hits coloured by log₁₀(KE / GeV).  The box bottom is automatically
+aligned to the interpolated terrain surface.
+
+```bash
+julia --project=. scripts/plot_shower_hits_3d.jl \
+    terrain.h5 box.ply output_vertical/particles/particles.parquet \
+    --output shower_hits_3d.png \
+    --radius 200 --xlim 15 --elev 20 --azim -60
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--radius` | Terrain face centroid radius for display (m) | `200` |
+| `--xlim` | Half-width of all three axes (m) | `50` |
+| `--elev` | Camera elevation angle (deg) | `20` |
+| `--azim` | Camera azimuth angle (deg) | `-60` |
+| `--dpi` | Resolution | `200` |
+| `--group` | HDF5 group for terrain data | auto-detect |
 
 ---
 
@@ -308,12 +393,13 @@ Add `-DWITH_FLUKA=ON` if FLUKA is available in the CORSIKA build
 
 ## Complete example (copy-paste)
 
-Running these commands in order reproduces the plots for the Jura site:
+Running these commands in order reproduces the geometry, simulation, and plots
+for the Jura site:
 
 ```bash
 cd /path/to/CORSIKA_terrain
 
-# Install packages (once only)
+# Install Julia packages (once only)
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
 # Terrain mesh (~1 min for base_triangulation_100000)
@@ -321,23 +407,42 @@ julia --project=. scripts/create_terrain_geometry.jl 46.34249442 5.83882331 \
     --group base_triangulation_100000 \
     --output terrain.h5
 
-# Convert to PLY
+# Convert to PLY (for CORSIKA terrain absorber)
 julia --project=. scripts/terrain_h5_to_ply.jl terrain.h5 --output terrain.ply
 
-# Detector box (altitude derived from terrain mesh)
+# Detector box (altitude from barycentric interpolation of terrain mesh)
 julia --project=. scripts/make_box_scene.jl \
     --lat 46.34249442 --lon 5.83882331 \
-    --length 12.2 --width 2.44 --height 2.59 \
-    --terrain-h5 terrain.h5 --yaw 90 \
+    --length 2.44 --width 12.20 --height 2.59 \
+    --terrain-h5 terrain.h5 \
     --output box.ply
 
-# 2-D check
+# 2-D geometry check
 julia --project=. scripts/plot_terrain_box.jl terrain.h5 box.ply \
     --output terrain_box_check.png
 
-# 3-D plot
+# 3-D geometry plot
 julia --project=. scripts/plot_terrain_3d.jl terrain.h5 box.ply \
     --r2 300 --output terrain_3d.png
+
+# Run 5 vertical 10 TeV proton showers (requires built terrain_shower)
+applications/build/terrain_shower \
+    --lat 46.34249442 --lon 5.83882331 \
+    --box-ply box.ply \
+    -A 1 -Z 1 --energy 10000 \
+    --zenith 0 --azimuth 0 \
+    --filename output_vertical \
+    --seed 12345 -N 5
+
+# 2-D shower hit map
+julia --project=. scripts/plot_shower_hits.jl \
+    terrain.h5 box.ply output_vertical/particles/particles.parquet \
+    --output shower_hits.png
+
+# 3-D shower hit plot
+julia --project=. scripts/plot_shower_hits_3d.jl \
+    terrain.h5 box.ply output_vertical/particles/particles.parquet \
+    --output shower_hits_3d.png --radius 200 --xlim 15
 ```
 
 ---

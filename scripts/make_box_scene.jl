@@ -85,8 +85,11 @@ end
 
 """
 Return the terrain altitude (metres above Earth reference sphere) at the
-target (lat_deg, lon_deg) by finding the closest vertex in the terrain HDF5
-file in the horizontal (East-North) plane.
+target (lat_deg, lon_deg) by barycentric interpolation of the terrain mesh.
+
+Finds the face whose centroid is closest to the target in the horizontal
+(East-North) plane, then interpolates the altitude at (E=0, N=0) using
+barycentric coordinates.
 """
 function terrain_altitude_at_target(terrain_h5::String,
                                     lat_deg::Float64, lon_deg::Float64)
@@ -111,11 +114,38 @@ function terrain_altitude_at_target(terrain_h5::String,
         isempty(gname) && error("No group with 'vertices' found in $terrain_h5")
 
         verts = Float64.(read(f[gname]["vertices"]))   # (N, 3) ECEF
+        faces = Int.(read(f[gname]["faces"]))          # (M, 3) 0-based
         enu   = (R * (verts .- p0')')'                 # (N, 3) ENU
 
-        horiz   = sqrt.(enu[:, 1].^2 .+ enu[:, 2].^2)
-        closest = argmin(horiz)
-        return enu[closest, 3]
+        # Find the face with centroid closest to the target (E=0, N=0).
+        n_faces = size(faces, 1)
+        best_dist2 = Inf
+        best_face  = 1
+        for i in 1:n_faces
+            i0, i1, i2 = faces[i, 1]+1, faces[i, 2]+1, faces[i, 3]+1
+            ce = (enu[i0,1] + enu[i1,1] + enu[i2,1]) / 3.0
+            cn = (enu[i0,2] + enu[i1,2] + enu[i2,2]) / 3.0
+            d2 = ce^2 + cn^2
+            if d2 < best_dist2
+                best_dist2 = d2
+                best_face  = i
+            end
+        end
+
+        # Barycentric interpolation at (E=0, N=0) within the closest face.
+        i0, i1, i2 = faces[best_face,1]+1, faces[best_face,2]+1, faces[best_face,3]+1
+        e0, n0, u0 = enu[i0, 1], enu[i0, 2], enu[i0, 3]
+        e1, n1, u1 = enu[i1, 1], enu[i1, 2], enu[i1, 3]
+        e2, n2, u2 = enu[i2, 1], enu[i2, 2], enu[i2, 3]
+        denom = (n1 - n2)*(e0 - e2) + (e2 - e1)*(n0 - n2)
+        l0    = ((n1 - n2)*(0 - e2) + (e2 - e1)*(0 - n2)) / denom
+        l1    = ((n2 - n0)*(0 - e2) + (e0 - e2)*(0 - n2)) / denom
+        l2    = 1.0 - l0 - l1
+        alt   = l0*u0 + l1*u1 + l2*u2
+        println("  Terrain interpolation: face $best_face, " *
+                "centroid dist=$(round(sqrt(best_dist2),digits=1)) m, " *
+                "altitude=$(round(alt,digits=2)) m")
+        return alt
     end
 end
 
