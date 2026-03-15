@@ -18,8 +18,6 @@ scripts/
   plot_terrain_3d.jl          – 3-D terrain + box mesh visualisation
   plot_shower_hits.jl         – 2-D shower hit map (top-down + box zoom)
   plot_shower_hits_3d.jl      – 3-D shower hits on terrain + box (GLMakie)
-  plot_shower_hits.py         – Python equivalent of plot_shower_hits.jl
-  plot_shower_hits_3d.py      – Python equivalent of plot_shower_hits_3d.jl
 applications/
   terrain_shower.cpp          – CORSIKA 8 C++ application
   CMakeLists.txt
